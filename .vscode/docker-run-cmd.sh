@@ -1,0 +1,1 @@
+docker run -it --cap-add=cap_sys_resource --cap-add=cap_sys_admin armo-agent-with-falco:test

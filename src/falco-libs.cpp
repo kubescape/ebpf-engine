@@ -184,9 +184,7 @@ static std::string get_event_type(uint16_t type)
         // Process syscalls
         //      
         case PPME_SYSCALL_BPF_E:
-	case PPME_SYSCALL_BPF_2_E:
-        case PPME_SYSCALL_BPF_X:
-	case PPME_SYSCALL_BPF_2_X: return "bpf";
+        case PPME_SYSCALL_BPF_X: return "bpf";
         case PPME_SYSCALL_BRK_1_E: 
         case PPME_SYSCALL_BRK_4_E:
         case PPME_SYSCALL_BRK_1_X:
@@ -402,7 +400,8 @@ void start_capturer(void *cli_parser) {
         filter = filter_string;
     }
 
-    inspector.open_bpf(0, ebpf_path);
+    inspector.set_bpf_probe(ebpf_path);
+    inspector.open();
     if (!filter.empty())
         inspector.set_filter(filter);
 

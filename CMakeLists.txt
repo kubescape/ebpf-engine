@@ -26,8 +26,6 @@ target_link_libraries(main
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/libscap.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/udig/libscap_engine_udig.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/b64-prefix/src/b64/src/libb64.a
-	${FALCO_DEPENDENCY_BINARY_DIR}/re2-prefix/src/re2/lib/libre2.a
-	${FALCO_DEPENDENCY_BINARY_DIR}/re2-prefix/build/libre2.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/jq-prefix/src/jq/modules/oniguruma/src/.libs/libonig.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/jq-prefix/src/jq/.libs/libjq.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/jq-prefix/src/jq/target/lib/libonig.a
@@ -55,6 +53,8 @@ target_link_libraries(main
 	${FALCO_DEPENDENCY_BINARY_DIR}/tbb-prefix/src/tbb/build/lib_release/libtbb.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/libgrpc++.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/libgrpc.a
+	${FALCO_DEPENDENCY_BINARY_DIR}/re2-prefix/src/re2/lib/libre2.a
+	${FALCO_DEPENDENCY_BINARY_DIR}/re2-prefix/build/libre2.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/libaddress_sorting.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/libgpr.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/libupb.a

@@ -122,8 +122,9 @@ uint8_t filter_by_container_id(void *cli_parser_obj, const char *container_id) {
     cli_parser_t *cli_parser = (cli_parser_t *)cli_parser_obj;
 
     if (cli_parser) {
-        return cli_parser->container_id_filter == NULL || !strstr(cli_parser->container_id_filter, container_id);
+        return cli_parser->container_id_filter == NULL || strstr(cli_parser->container_id_filter, container_id) != NULL;
     }
+    return 0;
 }
 
 void destroy_cli_parser(void *cli_parser_obj) {

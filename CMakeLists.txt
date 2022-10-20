@@ -1,4 +1,4 @@
-project(armo-agent)
+project(kubescape-ebpf-engine)
 
 cmake_minimum_required(VERSION 2.8.5)
 

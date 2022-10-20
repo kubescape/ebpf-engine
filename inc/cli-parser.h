@@ -5,7 +5,7 @@
 extern "C" {
 #endif
     
-#include "armo-types.h"
+#include "kubescape-types.h"
 #include <stdint.h>
 
 typedef enum cli_options_t{
@@ -14,7 +14,7 @@ typedef enum cli_options_t{
 }cli_options_t;
 
 void *create_cli_parser();
-armo_rc parse_cli(void *cli_parser, int argc, char **argv);
+kubescape_rc parse_cli(void *cli_parser, int argc, char **argv);
 cli_options_t get_cli_options(void *cli_parser);
 char* get_filter_string(void *cli_parser);
 char* get_ebpf_path(void *cli_parser);

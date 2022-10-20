@@ -40,12 +40,12 @@ static void print_cli_error() {
 }
 
 
-armo_rc parse_cli(void *cli_parser_obj, int argc, char **argv) {
+kubescape_rc parse_cli(void *cli_parser_obj, int argc, char **argv) {
 	
-    armo_rc rc = ARMO_SUCCESS;
+    kubescape_rc rc = KUBESCAPE_SUCCESS;
     int op;
 	int long_index = 0;
-    armo_bool stop = armo_false;
+    kubescape_bool stop = kubescape_false;
     cli_parser_t *cli_parser = (cli_parser_t *)cli_parser_obj;
 
     static struct option long_options[] = {
@@ -78,16 +78,16 @@ armo_rc parse_cli(void *cli_parser_obj, int argc, char **argv) {
             break;
         case 'h':
             print_cli_help();
-            stop = armo_true;
-            rc = ARMO_FAIL;
+            stop = kubescape_true;
+            rc = KUBESCAPE_FAIL;
             break;
 		default:
             print_cli_error();
-            stop = armo_true;
-            rc = ARMO_FAIL;
+            stop = kubescape_true;
+            rc = KUBESCAPE_FAIL;
 			break;
 		}
-        if (stop == armo_true)
+        if (stop == kubescape_true)
             break;
 	}
 

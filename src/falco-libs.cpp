@@ -337,6 +337,22 @@ static sinsp_evt* get_event(sinsp& inspector, std::function<void(const std::stri
 	return nullptr;
 }
 
+static void endline_char_escaping(std::string& str, char c) {
+    std::vector<int> characterLocations;
+
+    for(int i =0; i < str.size(); i++) {
+        if(str[i] == c)
+            characterLocations.push_back(i);
+    }
+
+    int char_inserts_counter = 0;
+    for(int i =0; i < characterLocations.size(); i++) {
+        int charLocation = characterLocations[i];
+        str.replace(charLocation+char_inserts_counter, 1, "\\n");
+        char_inserts_counter += 1;
+    }
+}
+
 static void print_capture(sinsp& inspector, void *cli_parser)
 {
 	sinsp_evt* ev = get_event(inspector, [](const std::string& error_msg)
@@ -350,6 +366,7 @@ static void print_capture(sinsp& inspector, void *cli_parser)
 	if(thread && PPME_IS_ENTER(ev->get_type()) && filter_by_container_id(cli_parser, thread->m_container_id.c_str())) {
 		string cmdline;
 		sinsp_threadinfo::populate_cmdline(cmdline, thread);
+        endline_char_escaping(cmdline, '\n');
 
         string date_time;
         sinsp_utils::ts_to_iso_8601(ev->get_ts(), &date_time);

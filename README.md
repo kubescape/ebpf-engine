@@ -1,13 +1,27 @@
-# kubescape-ebpf-engine
-## installing steps
-    1. run the script ./install_dependencies.sh in order to pull falco libs and build relavent libraries - this step is quiet long (15 minutes more or less)
-    2. create new build directory: mkdir ./build
-    3. run cmake in the build directory: cmake ..
-    4. build the project: make all
+# eBPF Engine
 
-## runnig steps
-    1. run the command line for example: sudo ./build/main -f "evt.type=execve or evt.type=execveat" -e ./dependencies/falco-libs/build/driver/bpf/probe.o
-       in order to listen on all execve and execveat syscalls occuring in containers (by default we will print data only in containers)
+## Build
 
-run ./build/main -h in order to see all flags
+1. Pull and build vendor libraries by running the following script:
+```sh
+./install_dependencies.sh
+```
+<i>This step can take ~15 minutes depending on your machine.</i>
 
+2. Build the engine:
+
+```sh
+mkdir ./build && cd build
+cmake ..
+make all
+```
+
+## Run
+
+```sh
+sudo ./build/main -f "evt.type=execve or evt.type=execveat" -e ./dependencies/falco-libs/build/driver/bpf/probe.o
+```
+
+The command above will listen on all `execve` and `execveat` syscalls occuring in containers (by default we will print data only in containers).
+
+Check out the available flags by running: `./build/main -h`

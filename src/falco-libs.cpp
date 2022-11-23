@@ -47,13 +47,23 @@ static std::string get_event_type(uint16_t type)
         case PPME_SYSCALL_CREAT_E: 
         case PPME_SYSCALL_CREAT_X: return "creat";
         case PPME_SYSCALL_DUP_E:
-        case PPME_SYSCALL_DUP_X: return "dup";
+        case PPME_SYSCALL_DUP_X: 
+        case PPME_SYSCALL_DUP_1_E:
+        case PPME_SYSCALL_DUP_1_X: return "dup";
+        case PPME_SYSCALL_DUP2_E:
+        case PPME_SYSCALL_DUP2_X: return "dup2";
+        case PPME_SYSCALL_DUP3_E:
+        case PPME_SYSCALL_DUP3_X: return "dup3";
         case PPME_SYSCALL_EPOLLWAIT_E:
         case PPME_SYSCALL_EPOLLWAIT_X: return "epollwait";
         case PPME_SYSCALL_EVENTFD_E:
         case PPME_SYSCALL_EVENTFD_X: return "eventfd";
         case PPME_SYSCALL_FCHMODAT_E:
         case PPME_SYSCALL_FCHMODAT_X: return "fchmodat";
+        case PPME_SYSCALL_FCHMOD_E:
+        case PPME_SYSCALL_FCHMOD_X: return "chmod";
+        case PPME_SYSCALL_FCNTL_E:
+        case PPME_SYSCALL_FCNTL_X: return "fcntl";
         case PPME_SYSCALL_FLOCK_E:
         case PPME_SYSCALL_FLOCK_X: return "flock";
         case PPME_SYSCALL_FSTAT_E:
@@ -179,6 +189,18 @@ static std::string get_event_type(uint16_t type)
         case PPME_SYSCALL_UNLINKAT_2_X: return "unlinkat";
         case PPME_SYSCALL_WRITE_E:
         case PPME_SYSCALL_WRITE_X: return "write";
+        case PPME_SYSCALL_WRITEV_E:
+        case PPME_SYSCALL_WRITEV_X: return "writev";
+        case PPME_SYSCALL_COPY_FILE_RANGE_E:
+        case PPME_SYSCALL_COPY_FILE_RANGE_X: return "copy_file_range";
+        case PPME_SYSCALL_IO_URING_ENTER_E:
+        case PPME_SYSCALL_IO_URING_ENTER_X: return "io_uring_enter";
+        case PPME_SYSCALL_IO_URING_REGISTER_E:
+        case PPME_SYSCALL_IO_URING_REGISTER_X: return "io_uring_register";
+        case PPME_SYSCALL_IO_URING_SETUP_E:
+        case PPME_SYSCALL_IO_URING_SETUP_X: return "io_uring_setup";
+        case PPME_SYSCALL_UMOUNT_E:
+        case PPME_SYSCALL_UMOUNT_X: return "umount";
 
         //
         // Process syscalls
@@ -239,6 +261,18 @@ static std::string get_event_type(uint16_t type)
         case PPME_SYSCALL_MMAP_X: return "mmap";
         case PPME_SYSCALL_MUNMAP_E:
         case PPME_SYSCALL_MUNMAP_X: return "munmap";
+        case PPME_SYSCALL_MLOCKALL_E:
+        case PPME_SYSCALL_MLOCKALL_X: return "mlockall";
+        case PPME_SYSCALL_MLOCK_E:
+        case PPME_SYSCALL_MLOCK_X: return "mlock";
+        case PPME_SYSCALL_MMAP2_E:
+        case PPME_SYSCALL_MMAP2_X: return "mmap2";
+        case PPME_SYSCALL_MPROTECT_E:
+        case PPME_SYSCALL_MPROTECT_X: return "mprotect";
+        case PPME_SYSCALL_MUNLOCKALL_E:
+        case PPME_SYSCALL_MUNLOCKALL_X: return "munlockall";
+        case PPME_SYSCALL_MUNLOCK_E:
+        case PPME_SYSCALL_MUNLOCK_X: return "munlock";
         case PPME_SYSCALL_NANOSLEEP_E:
         case PPME_SYSCALL_NANOSLEEP_X: return "nanosleep";
         case PPME_SYSCALL_SETPGID_E:
@@ -270,9 +304,15 @@ static std::string get_event_type(uint16_t type)
         case PPME_SYSCALL_UNSHARE_E:
         case PPME_SYSCALL_UNSHARE_X: return "unshare";
         case PPME_SYSCALL_VFORK_E:
-        case PPME_SYSCALL_VFORK_20_E:
         case PPME_SYSCALL_VFORK_X:
+        case PPME_SYSCALL_VFORK_17_E:
+        case PPME_SYSCALL_VFORK_17_X: 
+        case PPME_SYSCALL_VFORK_20_E:
         case PPME_SYSCALL_VFORK_20_X: return "vfork";
+        case PPME_SYSCALL_CAPSET_E:
+        case PPME_SYSCALL_CAPSET_X: return "capset";
+        case PPME_SYSCALL_USERFAULTFD_E:
+        case PPME_SYSCALL_USERFAULTFD_X: return "userfaultfd";
 
         //
         // Socket syscalls

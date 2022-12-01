@@ -12,7 +12,10 @@ include_directories(${FALCO_DEPENDENCY_DIR}/build/tbb-prefix/src/tbb/include)
 include_directories(${FALCO_DEPENDENCY_DIR}/userspace/libscap)
 include_directories(${FALCO_DEPENDENCY_DIR}/userspace/libsinsp/third-party/jsoncpp)
 include_directories(${PROJECT_SOURCE_DIR}/inc)
+include_directories(${FALCO_DEPENDENCY_BINARY_DIR}/common)
 
+# add_compile_options(-fsanitize=address)
+# add_link_options(-fsanitize=address)
 
 add_executable(main
 	${PROJECT_SOURCE_DIR}/src/main.cpp
@@ -34,13 +37,13 @@ target_link_libraries(main
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/source_plugin/libscap_engine_source_plugin.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/kmod/libscap_engine_kmod.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/noop/libscap_engine_noop.a
-	# ${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/test_input/libscap_engine_test_input.a
+	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/test_input/libscap_engine_test_input.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/savefile/libscap_engine_savefile.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/bpf/libscap_engine_bpf.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/libscap_event_schema.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/gvisor/libscap_engine_gvisor.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/engine/nodriver/libscap_engine_nodriver.a
-	# ${FALCO_DEPENDENCY_BINARY_DIR}/libscap/libdriver_event_schema.a
+	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/libdriver_event_schema.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/curl-prefix/src/curl/lib/.libs/libcurl.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/protobuf-prefix/src/protobuf/src/.libs/libprotobuf-lite.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/protobuf-prefix/src/protobuf/src/.libs/libprotobuf.a
@@ -55,6 +58,9 @@ target_link_libraries(main
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/libgrpc.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/third_party/re2/libre2.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/target/lib/libre2.a
+	${FALCO_DEPENDENCY_BINARY_DIR}/libscap/linux/libscap_platform.a
+	# ${FALCO_DEPENDENCY_BINARY_DIR}/re2-prefix/src/re2/lib/libre2.a
+	# ${FALCO_DEPENDENCY_BINARY_DIR}/re2-prefix/build/libre2.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/libaddress_sorting.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/libgpr.a
 	${FALCO_DEPENDENCY_BINARY_DIR}/grpc-prefix/src/grpc/libupb.a

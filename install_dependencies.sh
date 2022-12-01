@@ -4,7 +4,7 @@ sudo apt update && sudo apt install llvm clang cmake -y
 #download libscap and build it
 git clone https://github.com/falcosecurity/libs.git ./dependencies/falco-libs
 cd ./dependencies/falco-libs
-git checkout b44ed2cdfd85fdd75486be63bbda55c17de7c825
+git checkout 5a02ca746cda9866d574061fc61c146dae906526
 mkdir ./build && cd ./build
 cmake -DBUILD_BPF=true ../
 make bpf 

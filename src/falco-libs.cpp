@@ -95,7 +95,7 @@ static void print_capture(sinsp& inspector, void *cli_parser)
 	}
 
 	sinsp_threadinfo* thread = ev->get_thread_info();
-	if(thread && PPME_IS_ENTER(ev->get_type()) && filter_by_container_id(cli_parser, thread->m_container_id.c_str())) {
+	if(thread && filter_by_container_id(cli_parser, thread->m_container_id.c_str())) {
 		string cmdline;
 		sinsp_threadinfo::populate_cmdline(cmdline, thread);
         endline_char_escaping(cmdline, '\n');

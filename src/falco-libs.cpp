@@ -34,7 +34,6 @@ static std::string get_event_category(ppm_event_category category)
 std::string get_event_type_name(sinsp& inspector, sinsp_evt* ev)
 {
 	uint16_t type = ev->get_type();
-    cout << to_string(type) + ":";
 	if (type >= PPM_EVENT_MAX)
 	{
 		return "UNKNOWN " + to_string(type);

@@ -1,5 +1,5 @@
 # install predependencies
-sudo apt update && sudo apt install llvm clang cmake -y
+sudo apt update && sudo apt install llvm clang cmake libelf-dev -y
 
 #download libscap and build it
 git clone https://github.com/falcosecurity/libs.git ./dependencies/falco-libs

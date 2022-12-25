@@ -127,7 +127,7 @@ static void* print_data(void *args) {
     return NULL;
 }
 
-static void aggregate_capture(sinsp& inspector, void *cli_parser, pid_t mypid)
+static void aggregate_capture(sinsp& inspector, void *cli_parser, pid_t mypid, pid_t myppid)
 {
 	sinsp_evt* ev = get_event(inspector, [](const std::string& error_msg)
 				  { cout << "[ERROR] " << error_msg << endl; });
@@ -146,7 +146,7 @@ static void aggregate_capture(sinsp& inspector, void *cli_parser, pid_t mypid)
     // 1. move the process event functionality to the printing thread
     // 2. create string with one big allocation and add parse event data to it  
 	sinsp_threadinfo* thread = ev->get_thread_info();
-	if(thread && filter_by_container_id(cli_parser, thread->m_container_id.c_str()) && thread->m_pid != mypid) {
+	if(thread && filter_by_container_id(cli_parser, thread->m_container_id.c_str()) && thread->m_pid != mypid && thread->m_pid != myppid) {
         std::stringstream data;
 		string cmdline;
 		sinsp_threadinfo::populate_cmdline(cmdline, thread);
@@ -301,6 +301,7 @@ void start_capturer(void *cli_parser) {
     unsigned long  driver_buffer_bytes = DEFAULT_DRIVER_BUFFER_BYTES_DIM * 16;
     pthread_t print_data_tid, drop_event_check_tid;
     pid_t mypid = getpid();
+    pid_t myppid = getppid();
 
     aggregator = new std::vector<std::string>;
     
@@ -326,7 +327,7 @@ void start_capturer(void *cli_parser) {
         inspector.set_filter(filter);
 
     while (g_int) {
-        aggregate_capture(inspector, cli_parser, mypid);
+        aggregate_capture(inspector, cli_parser, mypid, myppid);
     }
 
     inspector.get_capture_stats(&stats);

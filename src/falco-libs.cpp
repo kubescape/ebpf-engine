@@ -88,22 +88,65 @@ static void endline_char_escaping(std::string& str, char c) {
     }
 }
 
-std::vector<std::string> *aggregator;
-std::vector<vector<std::string> *> aggregators;
+std::vector<sinsp_evt> *aggregator;
+std::vector<vector<sinsp_evt> *> aggregators;
 scap_stats stats;
 int g_int;
 uint64_t droppped_events;
 map<pthread_t, pthread_t> thread_ids;
 pthread_mutex_t notifier_print_data_mutex;
 struct timespec notifier_print_data_timeout;
+sinsp *insp;
 
-typedef struct print_data_args{
-    std::vector<std::string> *outputData;
-    pthread_t *tid;
-}print_data_args;
+static std::string parse_event(sinsp_evt ev) {    
+    // IMPROVMENT:
+    // 1. create string with one big allocation and add parse event data to it 
+
+	sinsp_threadinfo* thread = ev.get_thread_info();
+    
+    std::stringstream data;
+    string cmdline;
+    sinsp_threadinfo::populate_cmdline(cmdline, thread);
+    endline_char_escaping(cmdline, '\n');
+
+    string date_time;
+    sinsp_utils::ts_to_iso_8601(ev.get_ts(), &date_time);
+    bool is_host_proc = thread->m_container_id.empty();
+
+    data << date_time << "]::[" << (is_host_proc? "HOST": thread->m_container_id) << "]::";
+    data << "[CAT=" << get_event_category(ev.get_category()) << "]::";
+
+    sinsp_threadinfo* p_thr = thread->get_parent_thread();
+    int64_t parent_pid = -1;
+    if(nullptr != p_thr)
+    {
+        parent_pid = p_thr->m_pid;
+    }
+
+    data << "[PPID=" << parent_pid << "]::"
+            << "[PID=" << thread->m_pid << "]::"
+            << "[TYPE=" << get_event_type_name(*insp, &ev);
+    
+    if (ev.get_num_params()) {
+        data << "(";
+    }
+    for (int i = 0; i < ev.get_num_params(); ++i) {
+        const char *param_name = ev.get_param_name(i);
+        data << param_name << ": " << ev.get_param_value_str(param_name);
+        if (i < ev.get_num_params() - 1)
+            data << ", ";
+        else
+            data << ")";
+    }
+    data << "]::";
+    data << "[EXE=" << thread->get_exepath() << "]::"
+            << "[CMD=" << cmdline
+            << endl;
+    return data.str();
+}
 
 static void* print_data(void *args) {    
-    std::vector<std::string> *print_aggregator;
+    std::vector<sinsp_evt> *print_aggregator;
     
     while(g_int) {
         pthread_mutex_timedlock(&notifier_print_data_mutex, &notifier_print_data_timeout);
@@ -111,14 +154,12 @@ static void* print_data(void *args) {
             // get the first aggregator for print
             print_aggregator = aggregators[0];
             aggregators.erase(aggregators.begin());
-            vector<std::string>::iterator ptr;
+            vector<sinsp_evt*>::iterator ptr;
             size_t print_aggregator_size = print_aggregator->size(); 
             // remove the 50000 in the branch
             // add the max aggregate event as process argument
             for (int i=0; i < print_aggregator_size; ++i) {
-                if (strlen((*print_aggregator)[i].c_str()) > 0) {
-                    cout << (*print_aggregator)[i];
-                }
+                cout << parse_event((*print_aggregator)[i]);
             }
 
             delete print_aggregator;
@@ -134,63 +175,22 @@ static void aggregate_capture(sinsp& inspector, void *cli_parser, pid_t mypid, p
 
     if (aggregator->size() == 50000) {
         aggregators.push_back(aggregator);
-        aggregator = new vector<std::string>;
+        aggregator = new vector<sinsp_evt>;
         pthread_mutex_unlock(&notifier_print_data_mutex);
     }
 
 	if(ev == nullptr) {
         return;
 	}
-
-    // IMPROVMENT:
-    // 1. move the process event functionality to the printing thread
-    // 2. create string with one big allocation and add parse event data to it  
+ 
 	sinsp_threadinfo* thread = ev->get_thread_info();
 	if(thread && filter_by_container_id(cli_parser, thread->m_container_id.c_str()) && thread->m_pid != mypid && thread->m_pid != myppid) {
-        std::stringstream data;
-		string cmdline;
-		sinsp_threadinfo::populate_cmdline(cmdline, thread);
-        endline_char_escaping(cmdline, '\n');
-
-        string date_time;
-        sinsp_utils::ts_to_iso_8601(ev->get_ts(), &date_time);
-
         bool is_host_proc = thread->m_container_id.empty();
         if (!is_host_proc || (is_host_proc && (get_cli_options(cli_parser) & INCLUDING_HOST))) {
-
-            data << date_time << "]::[" << (is_host_proc? "HOST": thread->m_container_id) << "]::";
-            data << "[CAT=" << get_event_category(ev->get_category()) << "]::";
-
-            sinsp_threadinfo* p_thr = thread->get_parent_thread();
-            int64_t parent_pid = -1;
-            if(nullptr != p_thr)
-            {
-                parent_pid = p_thr->m_pid;
-            }
-
-            data << "[PPID=" << parent_pid << "]::"
-                    << "[PID=" << thread->m_pid << "]::"
-                    << "[TYPE=" << get_event_type_name(inspector, ev);
-            
-            if (ev->get_num_params()) {
-                data << "(";
-            }
-            for (int i = 0; i < ev->get_num_params(); ++i) {
-                const char *param_name = ev->get_param_name(i);
-                data << param_name << ": " << ev->get_param_value_str(param_name);
-                if (i < ev->get_num_params() - 1)
-                    data << ", ";
-                else
-                    data << ")";
-            }
-            data << "]::";
-            data << "[EXE=" << thread->get_exepath() << "]::"
-                    << "[CMD=" << cmdline
-                    << endl;
-            // cout << data.str();
-            aggregator->push_back(data.str());
+            aggregator->push_back(*ev);
         }
     }
+    
 }
 
 int get_modifies_state_tracepoints(OUT uint32_t tp_array[TP_VAL_MAX])
@@ -286,7 +286,8 @@ void *drop_event_check_cb(void *args) {
             cout << "drop event occured" << endl;
             droppped_events = new_droppped_events;
         }
-    }return NULL;
+    }
+    return NULL;
 }
 
 void start_capturer(void *cli_parser) {
@@ -303,8 +304,8 @@ void start_capturer(void *cli_parser) {
     pid_t mypid = getpid();
     pid_t myppid = getppid();
 
-    aggregator = new std::vector<std::string>;
-    
+    aggregator = new std::vector<sinsp_evt>;
+    insp = &inspector;   
     g_int = 1;
 
     if(signal(SIGINT, signal_callback) == SIG_ERR)

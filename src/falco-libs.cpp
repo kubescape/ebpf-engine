@@ -442,12 +442,12 @@ static sinsp_evt* get_event(sinsp& inspector, std::function<void(const std::stri
 
 std::vector<char *> *aggregator;
 std::vector<vector<char *> *> aggregators;
+std::vector<std::string> exe_not_to_monitor;
 scap_stats stats;
 int g_int;
 uint64_t droppped_events;
 map<pthread_t, pthread_t> thread_ids;
 sem_t notifier_print_data_sem;
-pid_t myppid;
 void *g_cli_parser;
 time_t start_timer_time;
 
@@ -485,8 +485,9 @@ static char* parse_event(sinsp_evt *ev) {
             parent_pid = p_thr->m_pid;
         }
         std::string type = get_event_type(ev->get_type(), ev, &after_arguments_resolving);
-        
-        if(filter_by_container_id(g_cli_parser, thread->m_container_id.c_str()) && myppid != parent_pid) {
+
+        if(filter_by_container_id(g_cli_parser, thread->m_container_id.c_str())) {
+            
             string cmdline;
             sinsp_threadinfo::populate_cmdline(cmdline, thread);
             // endline_char_escaping(cmdline, '\n');
@@ -619,7 +620,7 @@ static void* print_data(void *args) {
             size_t print_aggregator_size = print_aggregator->size(); 
             for (int i=0; i < print_aggregator_size; ++i) {
                 data = (*print_aggregator)[i];
-                printf("%s\n",data);
+                fprintf(stdout, "%s\n",data);
                 free(data);
             }
             aggregators.erase(aggregators.begin());
@@ -639,6 +640,15 @@ static bool is_timer_expired() {
     if (diff > (double)1) {
         time(&start_timer_time);
         return true;
+    }
+    return false;
+}
+
+static bool should_filter_monitoring_by_exe(std::string full_exe_path) {
+    for(int i=0; i < exe_not_to_monitor.size(); i++) {
+        if (exe_not_to_monitor[i] == full_exe_path) {
+            return true;
+        }
     }
     return false;
 }
@@ -665,7 +675,7 @@ static void print_capture(sinsp& inspector)
         if(nullptr != p_thr) {
             parent_pid = p_thr->m_pid;
         }
-        if(filter_by_container_id(g_cli_parser, thread->m_container_id.c_str()) && myppid != parent_pid && myppid != thread->m_pid) {
+        if(filter_by_container_id(g_cli_parser, thread->m_container_id.c_str()) && !should_filter_monitoring_by_exe(thread->get_exepath())) {
             bool is_host_proc = thread->m_container_id.empty();
             if (!is_host_proc || (is_host_proc && (get_cli_options(g_cli_parser) & INCLUDING_HOST))) {
                 aggregator->push_back(parse_event(ev));
@@ -677,30 +687,30 @@ static void print_capture(sinsp& inspector)
 static void print_stats(scap_stats *s)
 {
     return;
-	printf("\n---------------------- STATS -----------------------\n");
-	printf("Seen by driver: %" PRIu64 "\n", s->n_evts);
+	fprintf(stdout, "\n---------------------- STATS -----------------------\n");
+	fprintf(stdout, "Seen by driver: %" PRIu64 "\n", s->n_evts);
 
-	printf("Number of dropped events: %" PRIu64 "\n", s->n_drops);
-	printf("Number of dropped events caused by full buffer (total / all buffer drops - includes all categories below, likely higher than sum of syscall categories): %" PRIu64 "\n", s->n_drops_buffer);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_clone_fork_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_clone_fork_enter);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_clone_fork_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_clone_fork_exit);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_execve_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_execve_enter);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_execve_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_execve_exit);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_connect_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_connect_enter);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_connect_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_connect_exit);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_open_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_open_enter);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_open_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_open_exit);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_dir_file_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_dir_file_enter);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_dir_file_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_dir_file_exit);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_other_interest_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_other_interest_enter);
-	printf("Number of dropped events caused by full buffer (n_drops_buffer_other_interest_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_other_interest_exit);
-	printf("Number of dropped events caused by full scratch map: %" PRIu64 "\n", s->n_drops_scratch_map);
-	printf("Number of dropped events caused by invalid memory access (page faults): %" PRIu64 "\n", s->n_drops_pf);
-	printf("Number of dropped events caused by an invalid condition in the kernel instrumentation (bug): %" PRIu64 "\n", s->n_drops_bug);
-	printf("Number of preemptions: %" PRIu64 "\n", s->n_preemptions);
-	printf("Number of events skipped due to the tid being in a set of suppressed tids: %" PRIu64 "\n", s->n_suppressed);
-	printf("Number of threads currently being suppressed: %" PRIu64 "\n", s->n_tids_suppressed);
-	printf("-----------------------------------------------------\n");
+	fprintf(stdout, "Number of dropped events: %" PRIu64 "\n", s->n_drops);
+	fprintf(stdout, "Number of dropped events caused by full buffer (total / all buffer drops - includes all categories below, likely higher than sum of syscall categories): %" PRIu64 "\n", s->n_drops_buffer);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_clone_fork_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_clone_fork_enter);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_clone_fork_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_clone_fork_exit);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_execve_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_execve_enter);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_execve_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_execve_exit);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_connect_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_connect_enter);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_connect_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_connect_exit);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_open_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_open_enter);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_open_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_open_exit);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_dir_file_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_dir_file_enter);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_dir_file_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_dir_file_exit);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_other_interest_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_other_interest_enter);
+	fprintf(stdout, "Number of dropped events caused by full buffer (n_drops_buffer_other_interest_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_other_interest_exit);
+	fprintf(stdout, "Number of dropped events caused by full scratch map: %" PRIu64 "\n", s->n_drops_scratch_map);
+	fprintf(stdout, "Number of dropped events caused by invalid memory access (page faults): %" PRIu64 "\n", s->n_drops_pf);
+	fprintf(stdout, "Number of dropped events caused by an invalid condition in the kernel instrumentation (bug): %" PRIu64 "\n", s->n_drops_bug);
+	fprintf(stdout, "Number of preemptions: %" PRIu64 "\n", s->n_preemptions);
+	fprintf(stdout, "Number of events skipped due to the tid being in a set of suppressed tids: %" PRIu64 "\n", s->n_suppressed);
+	fprintf(stdout, "Number of threads currently being suppressed: %" PRIu64 "\n", s->n_tids_suppressed);
+	fprintf(stdout, "-----------------------------------------------------\n");
 }
 
 static void signal_callback(int signal)
@@ -732,11 +742,15 @@ void start_capturer(void *cli_parser) {
     const char* ebpf_path = get_ebpf_path(cli_parser);
     droppped_events = 0;
     pthread_t print_data_tid, drop_event_check_tid, timer_tid;
-    myppid = getppid();
 
     g_cli_parser = cli_parser;
     aggregator = new std::vector<char *>;    
     g_int = 1;
+
+    exe_not_to_monitor.push_back("/etc/sneeffer/kubescape_sneeffer");
+    exe_not_to_monitor.push_back("/etc/sneeffer/resources/ebpf/sniffer");
+    exe_not_to_monitor.push_back("/etc/sneeffer/resources/vuln/grype");
+    exe_not_to_monitor.push_back("/etc/sneeffer/resources/sbom/syft");
 
     if(signal(SIGINT, signal_callback) == SIG_ERR)
 	{

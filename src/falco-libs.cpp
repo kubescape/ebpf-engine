@@ -665,7 +665,7 @@ static void print_capture(sinsp& inspector)
         if(nullptr != p_thr) {
             parent_pid = p_thr->m_pid;
         }
-        if(filter_by_container_id(g_cli_parser, thread->m_container_id.c_str()) && myppid != parent_pid) {
+        if(filter_by_container_id(g_cli_parser, thread->m_container_id.c_str()) && myppid != parent_pid && myppid != thread->m_pid) {
             bool is_host_proc = thread->m_container_id.empty();
             if (!is_host_proc || (is_host_proc && (get_cli_options(g_cli_parser) & INCLUDING_HOST))) {
                 aggregator->push_back(parse_event(ev));

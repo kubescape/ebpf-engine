@@ -3,6 +3,11 @@
 #include <iostream>
 #include <stdlib.h>
 #include <sinsp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
 
 static std::string get_event_category(ppm_event_category category)
 {
@@ -31,7 +36,47 @@ static std::string get_event_category(ppm_event_category category)
     };
 }
 
-static std::string get_event_type(uint16_t type)
+static std::string get_syscal_name(std::string nativeID) {
+    long id = strtol(nativeID.c_str(), NULL, 10);
+    switch (id)
+    {
+    case 154:
+        return "modify_ldt";
+    case 187:
+        return "readahead";
+    case 214:
+        return "epoll_ctl_old";
+    case 215:
+        return "epoll_wait_old";
+    case 220:
+        return "semtimedop";
+    case 277:
+        return "sync_file_range";
+    case 301:
+        return "fanotify_mark";
+    case 314:
+        return "sched_setattr";
+    case 315:
+        return "sched_getattr";
+    case 319:
+        return "memfd_create";
+    case 324:
+        return "membarrier";
+    case 325:
+        return "mlock2";
+    case 327:
+        return "preadv2";
+    case 328:
+        return "pwritev2";
+    case 332:
+        return "statx";
+    default:
+        return "";
+        break;
+    }
+}
+
+static std::string get_event_type(uint16_t type, sinsp_evt* ev, bool *after_arguments_resolving)
 {
     switch(type)
     {
@@ -55,7 +100,7 @@ static std::string get_event_type(uint16_t type)
         case PPME_SYSCALL_DUP3_E:
         case PPME_SYSCALL_DUP3_X: return "dup3";
         case PPME_SYSCALL_EPOLLWAIT_E:
-        case PPME_SYSCALL_EPOLLWAIT_X: return "epollwait";
+        case PPME_SYSCALL_EPOLLWAIT_X: return "epoll_wait";
         case PPME_SYSCALL_EVENTFD_E:
         case PPME_SYSCALL_EVENTFD_X: return "eventfd";
         case PPME_SYSCALL_FCHMODAT_E:
@@ -151,6 +196,8 @@ static std::string get_event_type(uint16_t type)
         case PPME_SYSCALL_RENAME_X: return "rename";
         case PPME_SYSCALL_RENAMEAT_E:
         case PPME_SYSCALL_RENAMEAT_X: return "renameat";
+        case PPME_SYSCALL_RENAMEAT2_E:
+        case PPME_SYSCALL_RENAMEAT2_X: return "renameat2";
         case PPME_SYSCALL_RMDIR_E:
         case PPME_SYSCALL_RMDIR_2_E:
         case PPME_SYSCALL_RMDIR_X:
@@ -342,18 +389,34 @@ static std::string get_event_type(uint16_t type)
         case PPME_SOCKET_SHUTDOWN_E:
         case PPME_SOCKET_SHUTDOWN_X: return "shutdown";
         case PPME_SOCKET_SETSOCKOPT_E:
-        case PPME_SOCKET_SETSOCKOPT_X: return "setsocktopt";
+        case PPME_SOCKET_SETSOCKOPT_X: return "setsockopt";
         case PPME_SOCKET_SENDMSG_E:
         case PPME_SOCKET_SENDMSG_X: return "sendmsg";
         case PPME_SOCKET_ACCEPT4_5_E:
         case PPME_SOCKET_ACCEPT4_5_X: return "accept";
         case PPME_SOCKET_SENDMMSG_E:
-        case PPME_SOCKET_SENDMMSG_X: return "sendmsg";
+        case PPME_SOCKET_SENDMMSG_X: return "sendmmsg";
         case PPME_SOCKET_RECVMSG_E:
         case PPME_SOCKET_RECVMSG_X: return "recvmsg";
         case PPME_SOCKET_RECVMMSG_E:
         case PPME_SOCKET_RECVMMSG_X: return "recvmmsg";
-        default: return "UNKNOWN " + to_string(type);
+        default: 
+            // return "UNKNOWN " + to_string(type);
+            if (type == 0) {
+                *after_arguments_resolving = true;
+                for (int i = 0; i < ev->get_num_params(); ++i) {
+                    const char *param_name = ev->get_param_name(i);
+                    std::string param_value = ev->get_param_value_str(param_name);
+                    if (strcmp(param_name, "ID") == 0) {
+                        if (strcmp(param_value.c_str(), "<unknown>") != 0) {
+                            return param_value + "()";
+                        }
+                    } else if (strcmp(param_name, "nativeID") == 0) {
+                        return get_syscal_name(param_value) + "()";
+                    } 
+                }
+            }
+            return "unknown";
     };
 }
 
@@ -377,6 +440,17 @@ static sinsp_evt* get_event(sinsp& inspector, std::function<void(const std::stri
 	return nullptr;
 }
 
+std::vector<char *> *aggregator;
+std::vector<vector<char *> *> aggregators;
+scap_stats stats;
+int g_int;
+uint64_t droppped_events;
+map<pthread_t, pthread_t> thread_ids;
+sem_t notifier_print_data_sem;
+pid_t myppid;
+void *g_cli_parser;
+time_t start_timer_time;
+
 static void endline_char_escaping(std::string& str, char c) {
     std::vector<int> characterLocations;
 
@@ -393,58 +467,262 @@ static void endline_char_escaping(std::string& str, char c) {
     }
 }
 
-static void print_capture(sinsp& inspector, void *cli_parser)
+static char* parse_event(sinsp_evt *ev) {
+ 
+    char *data;
+    int data_index = 0;
+    bool after_arguments_resolving = false;
+    sinsp_threadinfo* thread = ev->get_thread_info();
+    std::string event_category, ppid_string, pid_string, event_type_string, param_value, exe;
+    size_t param_name_size, param_value_size;
+    const char *param_name;
+    
+    data = (char *)malloc(getpagesize());
+    if (thread) {
+        sinsp_threadinfo* p_thr = thread->get_parent_thread();
+        int64_t parent_pid = -1;
+        if(nullptr != p_thr) {
+            parent_pid = p_thr->m_pid;
+        }
+        std::string type = get_event_type(ev->get_type(), ev, &after_arguments_resolving);
+        
+        if(filter_by_container_id(g_cli_parser, thread->m_container_id.c_str()) && myppid != parent_pid) {
+            string cmdline;
+            sinsp_threadinfo::populate_cmdline(cmdline, thread);
+            // endline_char_escaping(cmdline, '\n');
+
+            string date_time;
+            sinsp_utils::ts_to_iso_8601(ev->get_ts(), &date_time);
+
+            bool is_host_proc = thread->m_container_id.empty();
+            if (!is_host_proc || (is_host_proc && (get_cli_options(g_cli_parser) & INCLUDING_HOST))) {
+
+                // timestamp                
+                memcpy(data, date_time.c_str(), date_time.size());
+                data_index += date_time.size(); 
+                memcpy(data + data_index, "]::[", sizeof("]::["));
+                data_index += sizeof("]::[") - 1; 
+
+                // container id
+                if (is_host_proc) {
+                    memcpy(data + data_index, "HOST", sizeof("HOST"));
+                    data_index += sizeof("HOST"); 
+                } else {
+                    memcpy(data + data_index, thread->m_container_id.c_str(), thread->m_container_id.size());
+                    data_index += thread->m_container_id.size(); 
+                }
+                memcpy(data + data_index, "]::[", sizeof("]::["));
+                data_index += sizeof("]::[") - 1; 
+
+                // event category
+                memcpy(data + data_index, "CAT=", sizeof("CAT="));
+                data_index += sizeof("CAT=") - 1; 
+                event_category = get_event_category(ev->get_category());
+                memcpy(data + data_index, event_category.c_str(), event_category.size());
+                data_index += event_category.size();
+                memcpy(data + data_index, "]::[", sizeof("]::["));
+                data_index += sizeof("]::[") - 1;
+
+                // event ppid
+                memcpy(data + data_index, "PPID=", sizeof("PPID="));
+                data_index += sizeof("PPID=") - 1;
+                ppid_string = to_string(parent_pid);
+                memcpy(data + data_index, ppid_string.c_str(), ppid_string.size());
+                data_index += ppid_string.size();
+                memcpy(data + data_index, "]::[", sizeof("]::["));
+                data_index += sizeof("]::[") - 1;
+                
+                // event pid
+                memcpy(data + data_index, "PID=", sizeof("PID="));
+                data_index += sizeof("PID=") - 1;
+                pid_string = to_string(thread->m_pid);
+                memcpy(data + data_index, pid_string.c_str(), pid_string.size());
+                data_index += pid_string.size();
+                memcpy(data + data_index, "]::[", sizeof("]::["));
+                data_index += sizeof("]::[") - 1;
+
+                // event type
+                memcpy(data + data_index, "TYPE=", sizeof("TYPE="));
+                data_index += sizeof("TYPE=") - 1;
+                if (type != "") {
+                    memcpy(data + data_index, type.c_str(), type.size());
+                    data_index += type.size();
+                } else {
+                    event_type_string = to_string(ev->get_type());
+                    memcpy(data + data_index, type.c_str(), type.size());
+                }
+                
+                // event parameters
+                if (type != "" && after_arguments_resolving == false) {
+                    if (ev->get_num_params()) {
+                        memcpy(data + data_index, "(", sizeof("("));
+                        data_index += 1;
+                    }
+                    for (int i = 0; i < ev->get_num_params(); ++i) {
+                        // param name
+                        param_name = ev->get_param_name(i);
+                        param_name_size = strlen(param_name);
+                        memcpy(data + data_index, param_name, param_name_size);
+                        data_index += param_name_size;
+                        
+                        // param value
+                        memcpy(data + data_index, ": ", sizeof(": "));
+                        data_index += 2;
+                        param_value = ev->get_param_value_str(param_name);
+                        endline_char_escaping(param_value, '\n');
+                        param_value_size = param_value.size();
+                        memcpy(data + data_index, param_value.c_str(), param_value_size);
+                        data_index += param_value_size;
+
+                        if (i < ev->get_num_params() - 1) {
+                            memcpy(data + data_index, ", ", sizeof(", "));
+                            data_index += 2;
+                        } else {
+                            memcpy(data + data_index, ")", sizeof(")"));
+                            data_index += 1;
+                        }
+                    }
+                }
+                memcpy(data + data_index, "]::[", sizeof("]::["));
+                data_index += sizeof("]::[") - 1;
+
+                // exe            
+                memcpy(data + data_index, "EXE=", sizeof("EXE="));
+                data_index += sizeof("EXE=") - 1;
+                exe = thread->get_exepath();
+                endline_char_escaping(exe, '\n');
+                memcpy(data + data_index, exe.c_str(), thread->get_exepath().size());
+                data_index += exe.size();
+                memcpy(data + data_index, "]::[", sizeof("]::["));
+                data_index += sizeof("]::[") - 1;
+
+                // cmd
+                memcpy(data + data_index, "CMD=", sizeof("CMD="));
+                data_index += sizeof("CMD=") - 1;
+                // memcpy(data + data_index, cmdline.c_str(), cmdline.size());
+
+            }
+        }
+    }
+    return data;
+}
+
+static void* print_data(void *args) {    
+    std::vector<char *> *print_aggregator;
+    char *data;
+
+    while(g_int) {
+        sem_wait(&notifier_print_data_sem);
+        if (aggregators.size() > 0) {
+            print_aggregator = aggregators[0];
+            vector<char *>::iterator ptr;
+            size_t print_aggregator_size = print_aggregator->size(); 
+            for (int i=0; i < print_aggregator_size; ++i) {
+                data = (*print_aggregator)[i];
+                printf("%s\n",data);
+                free(data);
+            }
+            aggregators.erase(aggregators.begin());
+
+            delete print_aggregator;
+        }
+    }
+    return NULL;
+}
+
+static bool is_timer_expired() {
+    time_t current_time;
+    double diff = 0;
+
+    time(&current_time);
+    diff = difftime(current_time, start_timer_time);
+    if (diff > (double)1) {
+        time(&start_timer_time);
+        return true;
+    }
+    return false;
+}
+
+static void print_capture(sinsp& inspector)
 {
 	sinsp_evt* ev = get_event(inspector, [](const std::string& error_msg)
 				  { cout << "[ERROR] " << error_msg << endl; });
+
+    if (aggregator->size() == 50000 || is_timer_expired()) {
+        aggregators.push_back(aggregator);
+        aggregator = new vector<char *>;
+        sem_post(&notifier_print_data_sem);
+    }
 
 	if(ev == nullptr) {
 		return;
 	}
 
-	sinsp_threadinfo* thread = ev->get_thread_info();
-	if(thread && PPME_IS_ENTER(ev->get_type()) && filter_by_container_id(cli_parser, thread->m_container_id.c_str())) {
-		string cmdline;
-		sinsp_threadinfo::populate_cmdline(cmdline, thread);
-        endline_char_escaping(cmdline, '\n');
-
-        string date_time;
-        sinsp_utils::ts_to_iso_8601(ev->get_ts(), &date_time);
-
-        bool is_host_proc = thread->m_container_id.empty();
-        if (!is_host_proc || (is_host_proc && (get_cli_options(cli_parser) & INCLUDING_HOST))) {
-
-            cout << date_time << "]::[" << (is_host_proc? "HOST": thread->m_container_id) << "]::";
-            cout << "[CAT=" << get_event_category(ev->get_category()) << "]::";
-
-            sinsp_threadinfo* p_thr = thread->get_parent_thread();
-            int64_t parent_pid = -1;
-            if(nullptr != p_thr)
-            {
-                parent_pid = p_thr->m_pid;
+    sinsp_threadinfo* thread = ev->get_thread_info();
+    if (thread) {
+        int64_t parent_pid = -1;
+        sinsp_threadinfo* p_thr = thread->get_parent_thread();
+        if(nullptr != p_thr) {
+            parent_pid = p_thr->m_pid;
+        }
+        if(filter_by_container_id(g_cli_parser, thread->m_container_id.c_str()) && myppid != parent_pid) {
+            bool is_host_proc = thread->m_container_id.empty();
+            if (!is_host_proc || (is_host_proc && (get_cli_options(g_cli_parser) & INCLUDING_HOST))) {
+                aggregator->push_back(parse_event(ev));
             }
-
-            cout << "[PPID=" << parent_pid << "]::"
-                    << "[PID=" << thread->m_pid << "]::"
-                    << "[TYPE=" << get_event_type(ev->get_type());
-            
-            if (ev->get_num_params()) {
-                cout << "(";
-            }
-            for (int i = 0; i < ev->get_num_params(); ++i) {
-                const char *param_name = ev->get_param_name(i);
-                cout << param_name << ": " << ev->get_param_value_str(param_name);
-                if (i < ev->get_num_params() - 1)
-                    cout << ", ";
-                else
-                    cout << ")";
-            }
-            cout << "]::";
-            cout << "[EXE=" << thread->get_exepath() << "]::"
-                    << "[CMD=" << cmdline
-                    << endl;
         }
     }
+}
+
+static void print_stats(scap_stats *s)
+{
+    return;
+	printf("\n---------------------- STATS -----------------------\n");
+	printf("Seen by driver: %" PRIu64 "\n", s->n_evts);
+
+	printf("Number of dropped events: %" PRIu64 "\n", s->n_drops);
+	printf("Number of dropped events caused by full buffer (total / all buffer drops - includes all categories below, likely higher than sum of syscall categories): %" PRIu64 "\n", s->n_drops_buffer);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_clone_fork_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_clone_fork_enter);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_clone_fork_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_clone_fork_exit);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_execve_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_execve_enter);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_execve_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_execve_exit);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_connect_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_connect_enter);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_connect_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_connect_exit);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_open_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_open_enter);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_open_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_open_exit);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_dir_file_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_dir_file_enter);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_dir_file_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_dir_file_exit);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_other_interest_enter syscall category): %" PRIu64 "\n", s->n_drops_buffer_other_interest_enter);
+	printf("Number of dropped events caused by full buffer (n_drops_buffer_other_interest_exit syscall category): %" PRIu64 "\n", s->n_drops_buffer_other_interest_exit);
+	printf("Number of dropped events caused by full scratch map: %" PRIu64 "\n", s->n_drops_scratch_map);
+	printf("Number of dropped events caused by invalid memory access (page faults): %" PRIu64 "\n", s->n_drops_pf);
+	printf("Number of dropped events caused by an invalid condition in the kernel instrumentation (bug): %" PRIu64 "\n", s->n_drops_bug);
+	printf("Number of preemptions: %" PRIu64 "\n", s->n_preemptions);
+	printf("Number of events skipped due to the tid being in a set of suppressed tids: %" PRIu64 "\n", s->n_suppressed);
+	printf("Number of threads currently being suppressed: %" PRIu64 "\n", s->n_tids_suppressed);
+	printf("-----------------------------------------------------\n");
+}
+
+static void signal_callback(int signal)
+{
+    g_int = 0;
+}
+
+void* drop_event_check_cb(void *args) {
+    sinsp *insp = (sinsp *)args;
+    scap_stats capture_stats;
+    uint64_t new_droppped_events;
+    
+    sleep(5);
+    while(g_int) {
+        sleep(1);
+        insp->get_capture_stats(&capture_stats);
+        new_droppped_events = capture_stats.n_drops_buffer;
+        if (new_droppped_events > droppped_events) {
+            cout << "drop event occured" << endl;
+            droppped_events = new_droppped_events;
+        }
+    }return NULL;
 }
 
 void start_capturer(void *cli_parser) {
@@ -452,6 +730,27 @@ void start_capturer(void *cli_parser) {
     std::string filter;
     const char* filter_string = get_filter_string(cli_parser);
     const char* ebpf_path = get_ebpf_path(cli_parser);
+    droppped_events = 0;
+    pthread_t print_data_tid, drop_event_check_tid, timer_tid;
+    myppid = getppid();
+
+    g_cli_parser = cli_parser;
+    aggregator = new std::vector<char *>;    
+    g_int = 1;
+
+    if(signal(SIGINT, signal_callback) == SIG_ERR)
+	{
+		fprintf(stderr, "An error occurred while setting SIGINT signal handler.\n");
+		return;
+	}
+
+    if (sem_init(&notifier_print_data_sem, 0, 0) == -1) {
+        fprintf(stderr, "An error occurred while setting semaphore with errno %d.\n", errno);
+		return;
+    } 
+
+    pthread_create(&print_data_tid, NULL, print_data, NULL);
+    pthread_create(&drop_event_check_tid, NULL, drop_event_check_cb, &inspector);
 
     if (filter_string) {
         filter = filter_string;
@@ -462,7 +761,12 @@ void start_capturer(void *cli_parser) {
     if (!filter.empty())
         inspector.set_filter(filter);
 
-    while (1) {
-        print_capture(inspector, cli_parser);
+    time(&start_timer_time);
+    while (g_int) {
+        print_capture(inspector);
     }
+    
+    scap_stats capture_stats;
+    inspector.get_capture_stats(&capture_stats);
+    print_stats(&capture_stats);
 }

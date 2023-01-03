@@ -467,6 +467,13 @@ static void endline_char_escaping(std::string& str, char c) {
     }
 }
 
+static void enlarge_data_string_if_needed(char **data, size_t *current_data_size, size_t added_data_size) {
+    while (strlen(*data) + added_data_size >= *current_data_size) {
+        *current_data_size = *current_data_size * 2;
+        *data = (char*)realloc(*data, *current_data_size);
+    }
+}
+
 static char* parse_event(sinsp_evt *ev) {
  
     char *data;
@@ -474,10 +481,11 @@ static char* parse_event(sinsp_evt *ev) {
     bool after_arguments_resolving = false;
     sinsp_threadinfo* thread = ev->get_thread_info();
     std::string event_category, ppid_string, pid_string, event_type_string, param_value, exe;
-    size_t param_name_size, param_value_size;
+    size_t param_name_size, param_value_size, current_data_size;
     const char *param_name;
-    
-    data = (char *)malloc(getpagesize());
+
+    current_data_size = getpagesize();
+    data = (char *)calloc(1, current_data_size);
     if (thread) {
         sinsp_threadinfo* p_thr = thread->get_parent_thread();
         int64_t parent_pid = -1;
@@ -572,6 +580,7 @@ static char* parse_event(sinsp_evt *ev) {
                         param_value = ev->get_param_value_str(param_name);
                         endline_char_escaping(param_value, '\n');
                         param_value_size = param_value.size();
+                        enlarge_data_string_if_needed(&data, &current_data_size, param_value.size());
                         memcpy(data + data_index, param_value.c_str(), param_value_size);
                         data_index += param_value_size;
 

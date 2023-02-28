@@ -1,4 +1,6 @@
 # eBPF Engine
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkubescape%2Febpf-engine.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fkubescape%2Febpf-engine?ref=badge_shield)
+
 
 ## Build
 
@@ -25,3 +27,7 @@ sudo ./build/main -f "evt.type=execve or evt.type=execveat" -e ./dependencies/fa
 The command above will listen on all `execve` and `execveat` syscalls occuring in containers (by default we will print data only in containers).
 
 Check out the available flags by running: `./build/main -h`
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkubescape%2Febpf-engine.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fkubescape%2Febpf-engine?ref=badge_large)

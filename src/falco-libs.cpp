@@ -448,6 +448,7 @@ int g_int;
 uint64_t droppped_events;
 map<pthread_t, pthread_t> thread_ids;
 sem_t notifier_print_data_sem;
+sem_t flush_all_sem;
 void *g_cli_parser;
 time_t start_timer_time;
 
@@ -621,7 +622,7 @@ static void* print_data(void *args) {
     std::vector<char *> *print_aggregator;
     char *data;
 
-    while(g_int) {
+    while(1) {
         sem_wait(&notifier_print_data_sem);
         if (aggregators.size() > 0) {
             print_aggregator = aggregators[0];
@@ -632,9 +633,12 @@ static void* print_data(void *args) {
                 fprintf(stdout, "%s\n",data);
                 free(data);
             }
+            print_aggregator->clear();
             aggregators.erase(aggregators.begin());
 
             delete print_aggregator;
+        }else if (g_int == 0) {
+            sem_post(&flush_all_sem);
         }
     }
     return NULL;
@@ -771,6 +775,10 @@ void start_capturer(void *cli_parser) {
         fprintf(stderr, "An error occurred while setting semaphore with errno %d.\n", errno);
 		return;
     } 
+    if (sem_init(&flush_all_sem, 0, 0) == -1) {
+        fprintf(stderr, "An error occurred while setting semaphore with errno %d.\n", errno);
+		return;
+    }
 
     pthread_create(&print_data_tid, NULL, print_data, NULL);
     pthread_create(&drop_event_check_tid, NULL, drop_event_check_cb, &inspector);
@@ -789,6 +797,18 @@ void start_capturer(void *cli_parser) {
         print_capture(inspector);
     }
     
+    while (aggregators.size() > 0 ) {
+        sem_post(&notifier_print_data_sem);
+    }
+    sem_post(&notifier_print_data_sem);
+
+    sem_wait(&flush_all_sem);
+    for(char* data : *aggregator)  {
+        fprintf(stdout, "%s\n",data);
+        free(data);
+    }
+    aggregator->clear();
+    delete aggregator;
     scap_stats capture_stats;
     inspector.get_capture_stats(&capture_stats);
     print_stats(&capture_stats);

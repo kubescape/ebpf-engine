@@ -444,7 +444,7 @@ std::vector<char *> *aggregator;
 std::vector<vector<char *> *> aggregators;
 std::vector<std::string> exe_not_to_monitor;
 scap_stats stats;
-int g_int;
+int g_int, g_page_size;
 uint64_t droppped_events;
 map<pthread_t, pthread_t> thread_ids;
 sem_t notifier_print_data_sem;
@@ -468,9 +468,9 @@ static void endline_char_escaping(std::string& str, char c) {
     }
 }
 
-static void enlarge_data_string_if_needed(char **data, size_t *current_data_size, size_t added_data_size) {
-    while (strlen(*data) + added_data_size >= *current_data_size) {
-        *current_data_size = *current_data_size * 2;
+static void enlarge_data_string_if_needed(char **data, int index, size_t *current_data_size, size_t added_data_size) {
+    if (index + added_data_size >= *current_data_size) {
+        *current_data_size = *current_data_size * 2 + added_data_size;
         *data = (char*)realloc(*data, *current_data_size);
     }
 }
@@ -485,7 +485,7 @@ static char* parse_event(sinsp_evt *ev) {
     size_t param_name_size, param_value_size, current_data_size;
     const char *param_name;
 
-    current_data_size = getpagesize();
+    current_data_size = g_page_size;
     data = (char *)calloc(1, current_data_size);
     if (thread) {
         sinsp_threadinfo* p_thr = thread->get_parent_thread();
@@ -565,6 +565,7 @@ static char* parse_event(sinsp_evt *ev) {
                 // event parameters
                 if (type != "" && after_arguments_resolving == false) {
                     if (ev->get_num_params()) {
+                        enlarge_data_string_if_needed(&data, data_index, &current_data_size, sizeof("("));
                         memcpy(data + data_index, "(", sizeof("("));
                         data_index += 1;
                     }
@@ -572,42 +573,52 @@ static char* parse_event(sinsp_evt *ev) {
                         // param name
                         param_name = ev->get_param_name(i);
                         param_name_size = strlen(param_name);
+                        enlarge_data_string_if_needed(&data, data_index, &current_data_size, param_name_size);
                         memcpy(data + data_index, param_name, param_name_size);
                         data_index += param_name_size;
                         
                         // param value
+                        enlarge_data_string_if_needed(&data, data_index, &current_data_size, sizeof(": "));
                         memcpy(data + data_index, ": ", sizeof(": "));
                         data_index += 2;
                         param_value = ev->get_param_value_str(param_name);
                         endline_char_escaping(param_value, '\n');
                         param_value_size = param_value.size();
-                        enlarge_data_string_if_needed(&data, &current_data_size, param_value.size());
+                        enlarge_data_string_if_needed(&data, data_index, &current_data_size, param_value_size);
                         memcpy(data + data_index, param_value.c_str(), param_value_size);
                         data_index += param_value_size;
 
                         if (i < ev->get_num_params() - 1) {
+                            enlarge_data_string_if_needed(&data, data_index, &current_data_size, sizeof(", "));
                             memcpy(data + data_index, ", ", sizeof(", "));
                             data_index += 2;
                         } else {
+                            enlarge_data_string_if_needed(&data, data_index, &current_data_size, sizeof(")"));
                             memcpy(data + data_index, ")", sizeof(")"));
                             data_index += 1;
                         }
                     }
                 }
+
+                enlarge_data_string_if_needed(&data, data_index, &current_data_size, sizeof("]::["));
                 memcpy(data + data_index, "]::[", sizeof("]::["));
                 data_index += sizeof("]::[") - 1;
 
                 // exe            
+                enlarge_data_string_if_needed(&data, data_index, &current_data_size, sizeof("EXE="));
                 memcpy(data + data_index, "EXE=", sizeof("EXE="));
                 data_index += sizeof("EXE=") - 1;
                 exe = thread->get_exepath();
                 endline_char_escaping(exe, '\n');
+                enlarge_data_string_if_needed(&data, data_index, &current_data_size, thread->get_exepath().size());
                 memcpy(data + data_index, exe.c_str(), thread->get_exepath().size());
                 data_index += exe.size();
+                enlarge_data_string_if_needed(&data, data_index, &current_data_size, sizeof("]::["));
                 memcpy(data + data_index, "]::[", sizeof("]::["));
                 data_index += sizeof("]::[") - 1;
 
                 // cmd
+                enlarge_data_string_if_needed(&data, data_index, &current_data_size, sizeof("CMD="));
                 memcpy(data + data_index, "CMD=", sizeof("CMD="));
                 data_index += sizeof("CMD=") - 1;
                 // memcpy(data + data_index, cmdline.c_str(), cmdline.size());
@@ -759,6 +770,8 @@ void start_capturer(void *cli_parser) {
     g_cli_parser = cli_parser;
     aggregator = new std::vector<char *>;    
     g_int = 1;
+    g_page_size = getpagesize();
+
 
     exe_not_to_monitor.push_back("/etc/sneeffer/kubescape_sneeffer");
     exe_not_to_monitor.push_back("/etc/sneeffer/resources/ebpf/sniffer");

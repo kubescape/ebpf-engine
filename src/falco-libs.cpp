@@ -431,7 +431,7 @@ static sinsp_evt* get_event(sinsp& inspector, std::function<void(const std::stri
 		return ev;
 	}
 
-	if(res != SCAP_TIMEOUT)
+	if(res != SCAP_TIMEOUT && res != SCAP_FILTERED_EVENT)
 	{
 		handle_error(inspector.getlasterr());
 		std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -761,6 +761,9 @@ void* drop_event_check_cb(void *args) {
 
 void start_capturer(void *cli_parser) {
     sinsp inspector;
+
+    std::unordered_set<uint32_t> tp_set = inspector.enforce_sinsp_state_tp();
+	std::unordered_set<uint32_t> ppm_sc;
     std::string filter;
     const char* filter_string = get_filter_string(cli_parser);
     const char* ebpf_path = get_ebpf_path(cli_parser);
@@ -800,16 +803,16 @@ void start_capturer(void *cli_parser) {
         filter = filter_string;
     }
 
-    inspector.set_bpf_probe(ebpf_path);
-    inspector.open();
+    inspector.open_bpf(ebpf_path, DEFAULT_DRIVER_BUFFER_BYTES_DIM, ppm_sc, tp_set);
     if (!filter.empty())
         inspector.set_filter(filter);
 
     time(&start_timer_time);
+	inspector.start_capture();
     while (g_int) {
         print_capture(inspector);
     }
-    
+	inspector.stop_capture();
     while (aggregators.size() > 0 ) {
         sem_post(&notifier_print_data_sem);
     }
